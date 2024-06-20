@@ -1,0 +1,206 @@
+"""
+Script documentation
+
+- Tool parameters are accessed using arcpy.GetParameter() or 
+                                     arcpy.GetParameterAsText()
+- Update derived parameter values using arcpy.SetParameter() or
+                                        arcpy.SetParameterAsText()
+"""
+import arcpy
+
+
+def script_tool(ws, fc_in1, fc_in2):
+    """Script code goes below"""
+
+    return
+
+
+if __name__ == "__main__":
+
+    ws = arcpy.GetParameterAsText(0) #Espacio de trabajo gdb
+    fc_in1 = arcpy.GetParameterAsText(1) #CICLOVIAS
+    fc_in2 = arcpy.GetParameterAsText(2) #AV_CERRILLOS
+
+    script_tool(ws, fc_in1, fc_in2)
+    arcpy.SetParameterAsText(2, "Result")
+
+#-----------------------------------------------------------
+arcpy.env.overwriteOutput = True
+
+arcpy.AddMessage("Espacio de Trabajo definido")
+
+arcpy.env.workspace = ws
+
+#Buffer Ciclovias 100 metros
+arcpy.analysis.Buffer(
+    in_features=fc_in1,
+    out_feature_class=r"DATA\CICLOVIAS_100M",
+    buffer_distance_or_field="100 Meters"
+)
+
+arcpy.AddMessage('Buffer completado')
+
+#Recorte Ciclovias / Áreas Verdes
+arcpy.analysis.PairwiseClip(
+    in_features=r"DATA\CICLOVIAS_100M",
+    clip_features=fc_in2,
+    out_feature_class=r"DATA\CICLOVIAS_inAV",
+    cluster_tolerance=None
+)
+
+arcpy.AddMessage('Recorte finalizado')
+
+#Elimina entidad que no se utilizará
+arcpy.management.Delete(
+    in_data=r"DATA\CICLOVIAS_100M",
+    data_type=""
+)
+
+arcpy.AddMessage('Entidad eliminada')
+
+
+
+# Crear una Feature Layer temporal
+arcpy.management.MakeFeatureLayer(r"DATA\CICLOVIAS_inAV", "CICLOVIAS_inAV_layer")
+arcpy.AddMessage('Feature Layer creada')
+fc_in3 = 'CICLOVIAS_inAV_layer'
+
+#Intersecar 
+arcpy.analysis.Intersect(
+    in_features=[fc_in3, fc_in2],
+    out_feature_class=r"DATA\CICLO_AV",
+    output_type="LINE"
+)
+
+arcpy.AddMessage('Intersección completada')
+
+# Eliminar la capa temporal
+arcpy.management.Delete("CICLOVIAS_inAV_layer")
+arcpy.AddMessage('Capa temporal eliminada')
+
+#Elimina entidad que no se utilizará
+arcpy.management.Delete(
+    in_data=r"DATA\CICLOVIAS_inAV",
+    data_type=""
+)
+
+arcpy.AddMessage('Entidad eliminada')
+
+#Añadir campo longitud ciclovia
+arcpy.management.AddField(
+    in_table=r"\DATA\CICLO_AV",
+    field_name="LONGITUD",
+    field_type="FLOAT",
+    field_alias="Longitud Ciclovia",
+)
+
+arcpy.AddMessage('Campo añadido')
+
+#Cálculo longitud ciclovias en áreas verdes
+arcpy.management.CalculateGeometryAttributes(
+    in_features=r"DATA\CICLO_AV",
+    geometry_property="LONGITUD LENGTH",
+    length_unit="METERS",
+    area_unit="",
+    coordinate_system='PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],UNIT["Meter",1.0]]',
+    coordinate_format="SAME_AS_INPUT"
+)
+
+arcpy.AddMessage('Largo calculado en metros')
+
+# Crear una Feature Layer temporal
+arcpy.management.MakeFeatureLayer(r"DATA\CICLO_AV", "CICLO_AV_Layer")
+arcpy.AddMessage('Feature Layer creada')
+
+#Resumir metros de ciclovia por área verde
+arcpy.gapro.SummarizeAttributes(
+    input_layer="CICLO_AV_Layer",
+    out_table=r"CICLOVIAS_AV",
+    fields="ID_AV",
+    summary_fields="LONGITUD SUM"
+)
+
+arcpy.AddMessage('Cálculo realizado')
+
+# Eliminar la capa temporal
+arcpy.management.Delete("CICLO_AV_Layer")
+arcpy.AddMessage('Capa temporal eliminada')
+
+#Elimina entidad que no se utilizará
+arcpy.management.Delete(
+    in_data=r"DATA\CICLO_AV",
+    data_type=""
+)
+
+arcpy.AddMessage('Entidad eliminada')
+
+#Elimina las uniones existentes en AV_CERRILLOS
+arcpy.management.RemoveJoin(
+    in_layer_or_view="AV_CERRILLOS",
+    join_name=""
+)
+
+arcpy.AddMessage('Uniones eliminadas')
+
+#Une tabla CICLOVIAS_AV con AV_CERRILLOS
+arcpy.management.AddJoin(
+    in_layer_or_view=r"AV_CERRILLOS",
+    in_field="ID_AV",
+    join_table=r"CICLOVIAS_AV",
+    join_field="ID_AV",
+    join_type="KEEP_ALL",
+    index_join_fields="NO_INDEX_JOIN_FIELDS",
+    rebuild_index="NO_REBUILD_INDEX"
+)
+
+arcpy.AddMessage('Unión completada')
+
+#Crear campo con largo de ciclovias
+arcpy.management.AddField(
+    in_table=r"DATA\AV_CERRILLOS",
+    field_name="LARGO",
+    field_type="FLOAT",
+    field_alias="LARGO CICLOVIAS"
+)
+
+arcpy.AddMessage('Creación de campo completada')
+
+#Calcular campo
+arcpy.management.CalculateField(
+    in_table=r"AV_CERRILLOS",
+    field="AV_CERRILLOS.LARGO",
+    expression="replace(!CICLOVIAS_AV.SUM_LONGITUD!)",
+    expression_type="PYTHON3",
+    code_block="""def replace(value):
+    if value is None:
+        return 0
+    else:
+        return float(value)""",
+    field_type="TEXT",
+    enforce_domains="NO_ENFORCE_DOMAINS"
+)
+
+arcpy.AddMessage('Campo calculado')
+
+#Elimina las uniones existentes en AV_CERRILLOS
+arcpy.management.RemoveJoin(
+    in_layer_or_view=r"AV_CERRILLOS",
+    join_name=""
+)
+
+arcpy.AddMessage('Uniones eliminadas')
+
+#Elimina tablas que no se utilizarán
+arcpy.management.Delete(
+    in_data=r"CICLOVIAS_AV",
+    data_type=""
+)
+
+arcpy.management.Delete(
+    in_data=r"NDVI",
+    data_type=""
+)
+
+arcpy.AddMessage('Entidades eliminadas')
+
+arcpy.AddMessage('GEOPROCESO FINALIZADO CON ÉXITO')
