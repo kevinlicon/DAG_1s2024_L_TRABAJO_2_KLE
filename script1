@@ -1,0 +1,164 @@
+"""
+Script documentation
+
+- Tool parameters are accessed using arcpy.GetParameter() or 
+                                     arcpy.GetParameterAsText()
+- Update derived parameter values using arcpy.SetParameter() or
+                                        arcpy.SetParameterAsText()
+"""
+import arcpy
+
+
+def script_tool(ws, fc_in1, fc_in2):
+    """Script code goes below"""
+
+    return
+
+
+if __name__ == "__main__":
+
+    ws = arcpy.GetParameterAsText(0) #Espacio de trabajo gdb
+    fc_in1 = arcpy.GetParameterAsText(1) #NDVI_PONT
+    fc_in2 = arcpy.GetParameterAsText(2) #AV_CERRILLOS
+
+    script_tool(ws, fc_in1, fc_in2)
+    arcpy.SetParameterAsText(2, "Result")
+
+#-----------------------------------------------------------
+arcpy.env.overwriteOutput = True
+
+arcpy.AddMessage("Espacio de Trabajo definido")
+
+arcpy.env.workspace = ws
+
+#Intersecar 
+arcpy.analysis.Intersect(
+    in_features=[fc_in1, fc_in2],
+    out_feature_class=r"DATA\NDVI_IN",
+    join_attributes="ALL",
+    cluster_tolerance=None,
+    output_type="INPUT"
+)
+
+arcpy.AddMessage('Intersección realizada')
+
+# Crear una Feature Layer temporal
+arcpy.management.MakeFeatureLayer(r"DATA\NDVI_IN", "NDVI_IN_Layer")
+arcpy.AddMessage('Feature Layer creada a partir de la intersección')
+summarize_output = os.path.join(ws, "NDVI")
+
+arcpy.gapro.SummarizeAttributes(
+    input_layer="NDVI_IN_Layer",  # Se asegura que es una Feature Layer
+    out_table=summarize_output,
+    fields="ID_AV",
+    summary_fields="grid_code MEAN",
+    time_step_interval=None,
+    time_step_repeat=None,
+    time_step_reference=None
+)
+
+arcpy.AddMessage('Recuento realizado')
+
+# Eliminar la capa temporal
+arcpy.management.Delete("NDVI_IN_Layer")
+arcpy.AddMessage('Capa temporal eliminada')
+
+arcpy.AddMessage('Recuento realizado')
+
+#Elimina entidad que no se utilizará
+arcpy.management.Delete(
+    in_data=r"DATA\NDVI_IN",
+    data_type=""
+)
+
+arcpy.AddMessage('Entidad eliminada')
+
+#Elimina las uniones existentes en AV_CERRILLOS
+arcpy.management.RemoveJoin(
+    in_layer_or_view="AV_CERRILLOS",
+    join_name=""
+)
+
+arcpy.AddMessage('Uniones eliminadas')
+
+arcpy.management.AddJoin(
+    in_layer_or_view=r"AV_CERRILLOS",
+    in_field="ID_AV",
+    join_table=r"NDVI",
+    join_field="ID_AV",
+    join_type="KEEP_ALL",
+    index_join_fields="NO_INDEX_JOIN_FIELDS",
+    rebuild_index="NO_REBUILD_INDEX"
+)
+
+arcpy.AddMessage('Unión completada')
+
+#Añadir campo Contador
+alias = 'Contador'
+
+arcpy.management.AddField(
+    in_table=r"AV_CERRILLOS",
+    field_name="count_ndvi",
+    field_type="SHORT",
+    field_alias=alias,
+    field_is_nullable="NULLABLE",
+)
+
+arcpy.AddMessage(f'Campo {alias} añadido')
+
+#Añadir campo NDVI
+alias = 'NDVI'
+
+arcpy.management.AddField(
+    in_table=r"AV_CERRILLOS",
+    field_name="mean_ndvi",
+    field_type="DOUBLE",
+    field_alias=alias,
+    field_is_nullable="NULLABLE"
+)
+
+arcpy.AddMessage(f'Campo {alias} añadido')
+
+#Calcular contador
+
+arcpy.management.CalculateField(
+    in_table="AV_CERRILLOS",
+    field="AV_CERRILLOS.count_ndvi",
+    expression="replace(!NDVI.COUNT!)",
+    expression_type="PYTHON3",
+    code_block="""def replace(value):
+    if value is None:
+        return 0
+    else:
+        return int(value)""",
+    field_type="TEXT",
+    enforce_domains="NO_ENFORCE_DOMAINS"
+)
+
+arcpy.AddMessage('Cálculo realizado')
+
+arcpy.management.CalculateField(
+    in_table="AV_CERRILLOS",
+    field="AV_CERRILLOS.mean_ndvi",
+    expression="replace(!NDVI.MEAN_grid_code!)",
+    expression_type="PYTHON3",
+    code_block="""def replace(value):
+    if value is None:
+        return 0
+    else:
+        return float(value)""",
+    field_type="TEXT",
+    enforce_domains="NO_ENFORCE_DOMAINS"
+)
+
+arcpy.AddMessage('Cálculo realizado')
+
+#Elimina las uniones existentes en AV_CERRILLOS
+arcpy.management.RemoveJoin(
+    in_layer_or_view="AV_CERRILLOS",
+    join_name=""
+)
+
+arcpy.AddMessage('Uniones eliminadas')
+
+arcpy.AddMessage('GEOPROCESO FINALIZADO CON ÉXITO')
