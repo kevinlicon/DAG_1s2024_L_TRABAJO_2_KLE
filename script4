@@ -1,0 +1,112 @@
+"""
+Script documentation
+
+- Tool parameters are accessed using arcpy.GetParameter() or 
+                                     arcpy.GetParameterAsText()
+- Update derived parameter values using arcpy.SetParameter() or
+                                        arcpy.SetParameterAsText()
+"""
+import arcpy
+
+
+def script_tool(ws, fc_in1, fc_in2):
+    """Script code goes below"""
+
+    return
+
+
+if __name__ == "__main__":
+
+    ws = arcpy.GetParameterAsText(0) #Espacio de trabajo gdb
+    fc_in1 = arcpy.GetParameterAsText(1) #MANZANAS
+    fc_in2 = arcpy.GetParameterAsText(2) #AV_CERRILLOS
+
+    script_tool(ws, fc_in1, fc_in2)
+    arcpy.SetParameterAsText(2, "Result")
+
+#-----------------------------------------------------------
+arcpy.env.overwriteOutput = True
+
+arcpy.AddMessage("Espacio de Trabajo definido")
+
+arcpy.env.workspace = ws
+
+#Tabla de Distancias Manzanas - Áreas Verdes
+arcpy.analysis.GenerateNearTable(
+    in_features=fc_in1,
+    near_features=fc_in2,
+    out_table=r"NEAR",
+    closest="ALL",
+    distance_unit="Meters"
+)
+
+arcpy.AddMessage('Distancias calculadas')
+
+#Crear campo de promedio de distancias ponderadas
+arcpy.management.AddField(
+    in_table=fc_in1,
+    field_name="POND_DIST",
+    field_type="FLOAT",
+    field_alias="Distancias Ponderadas"
+)
+
+arcpy.AddMessage('Creación de campo completada')
+
+# Definir las rutas de las tablas y feature classes
+av_cerrillos = fc_in2
+manzanas = fc_in1
+near_table = r"NEAR"
+
+# Crear un diccionario para almacenar las calidades de AV_CERRILLOS
+calidades = {}
+with arcpy.da.SearchCursor(av_cerrillos, ["OBJECTID", "CALIDAD"]) as cursor:
+    for row in cursor:
+        calidades[row[0]] = row[1]
+
+# Encontrar la distancia máxima en la tabla NEAR
+max_distance = 0
+with arcpy.da.SearchCursor(near_table, ["NEAR_DIST"]) as cursor:
+    max_distance = max(row[0] for row in cursor)
+
+# Crear un diccionario para almacenar las distancias ponderadas para cada manzana
+ponderaciones = {}
+with arcpy.da.SearchCursor(near_table, ["IN_FID", "NEAR_FID", "NEAR_DIST"]) as cursor:
+    for row in cursor:
+        in_fid = row[0]
+        near_fid = row[1]
+        near_dist = row[2]
+
+        # Normalizar la distancia
+        norm_dist = near_dist / max_distance if max_distance != 0 else 0
+        # Utilizar 1 - distancia normalizada
+        ponderacion_dist = 1 - norm_dist
+
+        calidad = calidades.get(near_fid, 0)
+        ponderacion = ponderacion_dist * calidad
+
+        if in_fid in ponderaciones:
+            ponderaciones[in_fid] += ponderacion
+        else:
+            ponderaciones[in_fid] = ponderacion
+
+# Iniciar una sesión de edición para actualizar la tabla MANZANAS
+with arcpy.da.Editor(arcpy.env.workspace) as edit:
+    # Actualizar el campo POND_DIST en MANZANAS
+    with arcpy.da.UpdateCursor(manzanas, ["OBJECTID", "POND_DIST"]) as cursor:
+        for row in cursor:
+            objectid = row[0]
+            pond_dist = ponderaciones.get(objectid, 0)
+            row[1] = pond_dist
+            cursor.updateRow(row)
+
+arcpy.AddMessage("Calculo y actualización del campo POND_DIST completados")
+
+#Elimina tablas que no se utilizarán
+arcpy.management.Delete(
+    in_data=r"NEAR",
+    data_type=""
+)
+
+arcpy.AddMessage('Tablas eliminadas')
+
+arcpy.AddMessage('GEOPROCESO FINALIZADO CON ÉXITO')
