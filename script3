@@ -1,0 +1,97 @@
+"""
+Script documentation
+
+- Tool parameters are accessed using arcpy.GetParameter() or 
+                                     arcpy.GetParameterAsText()
+- Update derived parameter values using arcpy.SetParameter() or
+                                        arcpy.SetParameterAsText()
+"""
+import arcpy
+
+
+def script_tool(ws, fc_in1):
+    """Script code goes below"""
+
+    return
+
+
+if __name__ == "__main__":
+
+    ws = arcpy.GetParameterAsText(0) #Espacio de trabajo gdb
+    fc_in1 = arcpy.GetParameterAsText(1) #AV_CERRILLOS
+
+    script_tool(ws, fc_in1)
+    arcpy.SetParameterAsText(1, "Result")
+
+#-----------------------------------------------------------
+arcpy.env.overwriteOutput = True
+
+arcpy.AddMessage("Espacio de Trabajo definido")
+
+arcpy.env.workspace = ws
+
+#Crear campo de calidad
+arcpy.management.AddField(
+    in_table=fc_in1,
+    field_name="CALIDAD",
+    field_type="FLOAT",
+    field_alias="Calidad Normalizada"
+)
+
+arcpy.AddMessage('Creación de campo completada')
+
+# Definir la ruta de la tabla AV_CERRILLOS
+av_cerrillos = fc_in1
+
+# Inicializar las variables para almacenar los valores máximos
+max_area_m2 = None
+max_count_ndvi = None
+max_largo = None
+
+# Crear cursores de búsqueda para obtener los valores máximos
+with arcpy.da.SearchCursor(av_cerrillos, ["AREA_M2", "count_ndvi", "LARGO"]) as cursor:
+    max_area_m2 = max(row[0] for row in cursor)
+    cursor.reset() 
+    max_count_ndvi = max(row[1] for row in cursor)
+    cursor.reset() 
+    max_largo = max(row[2] for row in cursor)
+
+# Definir las ponderaciones
+pond_tipo = 0.1
+pond_area = 0.1
+pond_count = 0.1
+pond_ndvi = 0.4
+pond_largo = 0.3
+
+# Iniciar una sesión de edición
+with arcpy.da.Editor(arcpy.env.workspace) as edit:
+    # Actualizar el campo CALIDAD en AV_CERRILLOS
+    with arcpy.da.UpdateCursor(av_cerrillos, ["TAV", "AREA_M2", "count_ndvi", "mean_ndvi", "LARGO", "CALIDAD"]) as cursor:
+        for row in cursor:
+            # Determinar el valor de 'tipo'
+            if row[0] == 1:
+                tipo = 0.7
+            elif row[0] == 2:
+                tipo = 0.3
+            else:
+                tipo = 0  # Por si acaso TAV no es ni 1 ni 2
+            
+            # Normalizar las variables
+            norm_area = row[1] / max_area_m2 if max_area_m2 != 0 else 0
+            norm_count = row[2] / max_count_ndvi if max_count_ndvi != 0 else 0
+            norm_largo = row[4] / max_largo if max_largo != 0 else 0
+
+            # Calcular el valor de CALIDAD
+            calidad = (pond_tipo * tipo + 
+                       pond_area * norm_area + 
+                       pond_count * norm_count + 
+                       pond_ndvi * row[3] +  # mean_ndvi ya está normalizado
+                       pond_largo * norm_largo)
+
+            # Actualizar el campo CALIDAD
+            row[5] = calidad
+            cursor.updateRow(row)
+
+arcpy.AddMessage("Cálculo y actualización del campo CALIDAD completados")
+
+arcpy.AddMessage('GEOPROCESO FINALIZADO CON ÉXITO')
