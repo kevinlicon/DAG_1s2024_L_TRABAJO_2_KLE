@@ -1,0 +1,16 @@
+"""
+Script documentation
+
+- Tool parameters are accessed using arcpy.GetParameter() or 
+                                     arcpy.GetParameterAsText()
+- Update derived parameter values using arcpy.SetParameter() or
+                                        arcpy.SetParameterAsText()
+"""
+import arcpy
+
+arcpy.management.ApplySymbologyFromLayer(
+    in_layer="INDICE",
+    in_symbology_layer="indice_symbo",
+    symbology_fields="VALUE_FIELD INDICE INDICE",
+    update_symbology="MAINTAIN"
+)
