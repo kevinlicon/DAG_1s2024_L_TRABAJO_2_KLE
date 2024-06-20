@@ -1,0 +1,185 @@
+"""
+Script documentation
+
+- Tool parameters are accessed using arcpy.GetParameter() or 
+                                     arcpy.GetParameterAsText()
+- Update derived parameter values using arcpy.SetParameter() or
+                                        arcpy.SetParameterAsText()
+"""
+import arcpy
+
+
+def script_tool(ws, fc_in1, fc_in2):
+    """Script code goes below"""
+
+    return
+
+
+if __name__ == "__main__":
+
+    ws = arcpy.GetParameterAsText(0) #Espacio de trabajo gdb
+    fc_in1 = arcpy.GetParameterAsText(1) #MANZANAS
+    fc_in2 = arcpy.GetParameterAsText(2) #NDVI_POINT
+
+    script_tool(ws, fc_in1, fc_in2)
+    arcpy.SetParameterAsText(2, "Result")
+
+#-----------------------------------------------------------
+arcpy.env.overwriteOutput = True
+
+arcpy.AddMessage("Espacio de Trabajo definido")
+
+arcpy.env.workspace = ws
+
+#Crear dataset de salida
+with arcpy.EnvManager(outputCoordinateSystem='PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],UNIT["Meter",1.0]]'):
+    arcpy.management.CreateFeatureDataset(
+        out_dataset_path= ws,
+        out_name="SALIDAS",
+        spatial_reference='PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],UNIT["Meter",1.0]];-20037700 -30241100 10000;#;#;0.001;#;#;IsHighPrecision'
+    )
+
+arcpy.AddMessage('Dataset creado')
+
+#Crear feature class salida
+arcpy.conversion.ExportFeatures(
+    in_features=fc_in1,
+    out_features=r"SALIDAS\INDICADOR",
+    where_clause="",
+    use_field_alias_as_name="NOT_USE_ALIAS",
+    field_mapping=r'IDMAN "IDMAN" true true false 254 Text 0 0,First,#,C:\Users\kevin\OneDrive\Documentos\ArcGIS\Packages\DAG_1s2024_L_TRABAJO_1_PARTE_2_KLE_ae85b6\commondata\dag_1s2024_l_trabajo_1_parte_2_kle.gdb\BASE\MANZANAS,IDMAN,0,253;cod_dis_ce "Distrito" true true false 4 Long 0 0,First,#,C:\Users\kevin\OneDrive\Documentos\ArcGIS\Packages\DAG_1s2024_L_TRABAJO_1_PARTE_2_KLE_ae85b6\commondata\dag_1s2024_l_trabajo_1_parte_2_kle.gdb\BASE\MANZANAS,cod_dis_ce,-1,-1;pob "pob" true true false 4 Long 0 0,First,#,C:\Users\kevin\OneDrive\Documentos\ArcGIS\Packages\DAG_1s2024_L_TRABAJO_1_PARTE_2_KLE_ae85b6\commondata\dag_1s2024_l_trabajo_1_parte_2_kle.gdb\BASE\MANZANAS,pob,-1,-1;den_pob "den_pob" true true false 4 Long 0 0,First,#,C:\Users\kevin\OneDrive\Documentos\ArcGIS\Packages\DAG_1s2024_L_TRABAJO_1_PARTE_2_KLE_ae85b6\commondata\dag_1s2024_l_trabajo_1_parte_2_kle.gdb\BASE\MANZANAS,den_pob,-1,-1;den_viv "den_viv" true true false 4 Long 0 0,First,#,C:\Users\kevin\OneDrive\Documentos\ArcGIS\Packages\DAG_1s2024_L_TRABAJO_1_PARTE_2_KLE_ae85b6\commondata\dag_1s2024_l_trabajo_1_parte_2_kle.gdb\BASE\MANZANAS,den_viv,-1,-1;POND_DIST "Distancias Ponderadas" true true false 4 Float 0 0,First,#,C:\Users\kevin\OneDrive\Documentos\ArcGIS\Packages\DAG_1s2024_L_TRABAJO_1_PARTE_2_KLE_ae85b6\commondata\dag_1s2024_l_trabajo_1_parte_2_kle.gdb\BASE\MANZANAS,POND_DIST,-1,-1',
+    sort_field=None
+)
+
+arcpy.AddMessage('Feature Class creada')
+
+#Crear campo de indice
+arcpy.management.AddField(
+    in_table=r"INDICADOR",
+    field_name="INDICE",
+    field_type="FLOAT",
+    field_alias="Indice"
+)
+
+arcpy.AddMessage('Creación de campo completada')
+
+# Definir la tabla y el campo
+tabla_ndvi = fc_in2
+campo_grid_code = "grid_code"
+
+# Inicializar una variable para almacenar el valor máximo
+max_valor = None
+
+# Usar SearchCursor para encontrar el valor máximo
+with arcpy.da.SearchCursor(tabla_ndvi, [campo_grid_code], sql_clause=(None, "ORDER BY {} DESC".format(campo_grid_code))) as cursor:
+    for row in cursor:
+        max_valor = row[0]
+        break  # Detener el bucle después de encontrar el primer valor (el más alto debido al ORDER BY DESC)
+    
+# Imprimir el valor máximo encontrado
+if max_valor is not None:
+    print("El valor más alto de {} es: {}".format(campo_grid_code, max_valor))
+else:
+    print("No se encontraron registros en la tabla {}.".format(tabla_ndvi))
+
+# Definir la ruta de la tabla INDICADOR
+indicador = r"INDICADOR"
+
+# Inicializar las ponderaciones
+pond_dp = 0.5
+pond_dst = 0.5
+
+# Crear diccionarios para almacenar los valores de den_pob y POND_DIST
+den_pob_values = {}
+pond_dist_values = {}
+
+# Leer los valores de den_pob y POND_DIST de la tabla INDICADOR
+with arcpy.da.SearchCursor(indicador, ["OBJECTID", "den_pob", "POND_DIST"]) as cursor:
+    for row in cursor:
+        den_pob_values[row[0]] = row[1]
+        pond_dist_values[row[0]] = row[2]
+
+# Encontrar los valores mínimos y máximos para la normalización
+max_den_pob = max(den_pob_values.values())
+min_den_pob = min(den_pob_values.values())
+
+max_pond_dist = max(pond_dist_values.values())
+min_pond_dist = min(pond_dist_values.values())
+
+# Crear un diccionario para almacenar los valores de INDICE
+indices = {}
+
+for objectid in den_pob_values:
+    norm_den_pob = (den_pob_values[objectid] - min_den_pob) / (max_den_pob - min_den_pob) if max_den_pob != min_den_pob else 0
+    norm_pond_dist = (pond_dist_values[objectid] - min_pond_dist) / (max_pond_dist - min_pond_dist) if max_pond_dist != min_pond_dist else 0
+    
+    # Calcular el índice
+    indice = (pond_dp * (1 - norm_den_pob) + pond_dst * norm_pond_dist)*max_valor
+    indices[objectid] = indice
+
+# Iniciar una sesión de edición para actualizar la tabla INDICADOR
+with arcpy.da.Editor(arcpy.env.workspace) as edit:
+    # Actualizar el campo INDICE en INDICADOR
+    with arcpy.da.UpdateCursor(indicador, ["OBJECTID", "den_pob", "POND_DIST", "INDICE"]) as cursor:
+        for row in cursor:
+            objectid = row[0]
+            if objectid in indices:
+                row[3] = indices[objectid]
+                cursor.updateRow(row)
+            else:
+                arcpy.AddMessage(f"OBJECTID {objectid} no encontrado en los datos calculados.")
+
+arcpy.AddMessage("Calculo y actualización del campo INDICE completados")
+
+#Salida final
+arcpy.conversion.ExportFeatures(
+    in_features=r"SALIDAS\INDICADOR",
+    out_features=r'SALIDAS\INDICE',
+    where_clause="",
+    use_field_alias_as_name="NOT_USE_ALIAS",
+    field_mapping=r'IDMAN "IDMAN" true true false 254 Text 0 0,First,#,C:\Users\kevin\OneDrive\Documentos\ArcGIS\Packages\DAG_1s2024_L_TRABAJO_1_PARTE_2_KLE_ae85b6\commondata\dag_1s2024_l_trabajo_1_parte_2_kle.gdb\SALIDAS\INDICADOR,IDMAN,0,253;INDICE "Indice" true true false 4 Float 0 0,First,#,C:\Users\kevin\OneDrive\Documentos\ArcGIS\Packages\DAG_1s2024_L_TRABAJO_1_PARTE_2_KLE_ae85b6\commondata\dag_1s2024_l_trabajo_1_parte_2_kle.gdb\SALIDAS\INDICADOR,INDICE,-1,-1',
+    sort_field=None
+)
+
+arcpy.AddMessage('Feature Class creado')
+
+#Elimina tablas que no se utilizarán
+arcpy.management.Delete(
+    in_data=r"SALIDAS\INDICADOR",
+    data_type=""
+)
+
+arcpy.AddMessage('Entidades eliminadas')
+
+# Obtener el proyecto activo
+aprx = arcpy.mp.ArcGISProject("CURRENT")
+
+# Obtener el mapa activo del proyecto
+mapa = aprx.activeMap
+
+# Obtener la capa "NDVI_POINT" del mapa
+capa_ndvi = mapa.listLayers("NDVI_POINT")[0]
+
+# Obtener la capa "CICLOVIAS" del mapa
+capa_ciclovias = mapa.listLayers("CICLOVIAS")[0]
+
+# Desactivar la visualización de las capas
+capa_ndvi.visible = False
+capa_ciclovias.visible = False
+
+# Obtener el proyecto activo
+aprx = arcpy.mp.ArcGISProject("CURRENT")
+
+# Obtener el mapa activo del proyecto
+mapa = aprx.activeMap
+
+# Ruta completa de la capa INDICE que acabas de crear
+ruta_capa_indice = ws + r"\SALIDAS\INDICE"
+
+# Agregar la capa INDICE al mapa activo
+mapa.addDataFromPath(ruta_capa_indice)
+
+# Guardar los cambios en el proyecto
+aprx.save()
+
+arcpy.AddMessage('Capa INDICE agregada al mapa activo')
